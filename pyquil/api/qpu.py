@@ -88,13 +88,16 @@ To suppress this warning, see Python's warning module.
 
         self.device_name = device_name
 
-    def run(self, quil_program, classical_addresses, trials=1):
+    def run(self, quil_program, classical_addresses, trials=1, needs_compilation=True, isa=None):
         """
         Run a pyQuil program on the QPU. This functionality is in beta.
 
         :param Program quil_program: Quil program to run on the QPU
         :param list|range classical_addresses: Currently unused
         :param int trials: Number of shots to take
+        :param needs_compilation: If True, preprocesses the job with the compiler.
+        :param isa: If set, specifies a custom ISA to compile to. If left unset,
+                    Forest uses the default ISA associated to this QPU device.
         :return: A list of lists of bits. Each sublist corresponds to the values
                  in `classical_addresses`.
         :rtype: list
@@ -103,15 +106,15 @@ To suppress this warning, see Python's warning module.
 The QPU does not currently support arbitrary measure operations. For now, the
 only supported operation on the QPU is run_and_measure.""")
 
-    def run_async(self, quil_program, classical_addresses, trials=1):
+    def run_async(self, quil_program, classical_addresses, trials=1, needs_compilation=True, isa=None):
         """
         Similar to run except that it returns a job id and doesn't wait for the program to be executed.
         See https://go.rigetti.com/connections for reasons to use this method.
         """
         # NB: Throw the same deprecation warning as in run
-        return self.run(quil_program, classical_addresses, trials)
+        return self.run(quil_program, classical_addresses, trials, needs_compilation=needs_compilation, isa=isa)
 
-    def _run_payload(self, quil_program, classical_addresses, trials):
+    def _run_payload(self, quil_program, classical_addresses, trials, needs_compilation, isa):
         if not isinstance(quil_program, Program):
             raise TypeError("quil_program must be a Quil program object")
         validate_run_items(classical_addresses)
@@ -120,12 +123,18 @@ only supported operation on the QPU is run_and_measure.""")
 
         payload = {"type": TYPE_MULTISHOT,
                    "addresses": list(classical_addresses),
-                   "trials": trials,
-                   "quil-instructions": quil_program.out()}
+                   "trials": trials}
+
+        if needs_compilation:
+            payload["uncompiled-quil"] = quil_program.out()
+            if isa:
+                payload["isa"] = isa.to_dict()
+        else:
+            payload["compiled-quil"] = quil_program.out()
 
         return payload
 
-    def run_and_measure(self, quil_program, qubits, trials=1):
+    def run_and_measure(self, quil_program, qubits, trials=1, needs_compilation=True, isa=None):
         """
         Run a pyQuil program on the QPU multiple times, measuring all the qubits in the QPU
         simultaneously at the end of the program each time. This functionality is in beta.
@@ -133,25 +142,26 @@ only supported operation on the QPU is run_and_measure.""")
         :param Program quil_program: A Quil program.
         :param list|range qubits: The list of qubits to measure
         :param int trials: Number of shots to collect.
+        :param needs_compilation: If True, preprocesses the job with the compiler.
         :return: A list of a list of bits.
         :rtype: list
         """
-        payload = self._run_and_measure_payload(quil_program, qubits, trials)
+        payload = self._run_and_measure_payload(quil_program, qubits, trials, needs_compilation=needs_compilation, isa=None)
 
         response = post_json(self.session, self.async_endpoint + "/job", self._wrap_program(payload))
         job = self.wait_for_job(get_job_id(response))
         return job.result()
 
-    def run_and_measure_async(self, quil_program, qubits, trials):
+    def run_and_measure_async(self, quil_program, qubits, trials, needs_compilation=True, isa=None):
         """
         Similar to run_and_measure except that it returns a job id and doesn't wait for the program to be executed.
         See https://go.rigetti.com/connections for reasons to use this method.
         """
-        payload = self._run_and_measure_payload(quil_program, qubits, trials)
+        payload = self._run_and_measure_payload(quil_program, qubits, trials, needs_compilation=needs_compilation, isa=None)
         response = post_json(self.session, self.async_endpoint + "/job", self._wrap_program(payload))
         return get_job_id(response)
 
-    def _run_and_measure_payload(self, quil_program, qubits, trials):
+    def _run_and_measure_payload(self, quil_program, qubits, trials, needs_compilation, isa):
         if not isinstance(quil_program, Program):
             raise TypeError('quil_program must be a Quil program object')
         validate_run_items(qubits)
@@ -160,8 +170,14 @@ only supported operation on the QPU is run_and_measure.""")
 
         payload = {'type': TYPE_MULTISHOT_MEASURE,
                    'qubits': list(qubits),
-                   'trials': trials,
-                   'quil-instructions': quil_program.out()}
+                   'trials': trials}
+
+        if needs_compilation:
+            payload['uncompiled-quil'] = quil_program.out()
+            if isa:
+                payload['isa'] = isa.to_dict()
+        else:
+            payload['compiled-quil'] = quil_program.out()
 
         return payload
 
