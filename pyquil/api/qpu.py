@@ -146,7 +146,7 @@ only supported operation on the QPU is run_and_measure.""")
         :return: A list of a list of bits.
         :rtype: list
         """
-        payload = self._run_and_measure_payload(quil_program, qubits, trials, needs_compilation=needs_compilation, isa=None)
+        payload = self._run_and_measure_payload(quil_program, qubits, trials, needs_compilation=needs_compilation, isa=isa)
 
         response = post_json(self.session, self.async_endpoint + "/job", self._wrap_program(payload))
         job = self.wait_for_job(get_job_id(response))
